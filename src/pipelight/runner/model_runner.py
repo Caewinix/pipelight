@@ -149,18 +149,18 @@ class ModelRunner(pl.LightningModule):
 
     def configure_optimizers(self) -> Union[Sequence[Optimizer], Tuple[Tuple[Optimizer], Sequence[LRScheduler]]]:
         optimization_parameters = self.optimization_parameters()
-        self.configured_optimizers = tuple(
+        self.configured_optimizers = [
             _init_optimizer(parameters, optimizer)
             for optimizer, parameters in zip(self.__optimizers, optimization_parameters)
-        )
+        ]
         if len(self.__lr_schedulers) == 0:
-            self.configured_lr_schedulers = tuple()
-            return list(self.configured_optimizers)
+            self.configured_lr_schedulers = []
+            return self.configured_optimizers
         else:
-            self.configured_lr_schedulers = tuple(
+            self.configured_lr_schedulers = [
                 _init_lr_scheduler(optimizer, lr_scheduler)
                 for optimizer, lr_scheduler in zip(self.configured_optimizers, self.__lr_schedulers)
-            )
+            ]
             return self.configured_optimizers, self.configured_lr_schedulers
     
     def train_at_step(self, batch: torch.Tensor, batch_idx: int) -> Union[torch.Tensor, Tuple[torch.Tensor, ...], Dict[str, torch.Tensor]]:
