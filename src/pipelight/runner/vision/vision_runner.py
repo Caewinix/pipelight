@@ -1,27 +1,7 @@
 from typing import Callable, Optional, Tuple, Union, Sequence, Mapping, Dict, Sequence
 import torch
 from torch import nn
-import torchflint
 from ..model_runner import ModelRunner
-
-
-def _tuplize(func, batch):
-    if func is None:
-        return tuple()
-    else:
-        data = func(batch)
-        if not isinstance(data, tuple):
-            data = (data,)
-        return data
-
-
-def _to_sequence(values):
-    if values is None:
-        return []
-    elif isinstance(values, Sequence):
-        return values
-    else:
-        return [values]
 
 
 class VisionRunner(ModelRunner):
@@ -119,10 +99,7 @@ class VisionRunner(ModelRunner):
         target_input: torch.Tensor = self.get_target_data(batch)
         source: Optional[torch.Tensor] = self.get_source_data(batch)
         generation = self.generate(batch, batch_idx, source, self.get_additional_data(batch), target_input)
-        map_dim = tuple(range(target_input.ndim - 2, target_input.ndim))
-        target_input = torchflint.map_range(target_input, dim=map_dim)
-        generation = torchflint.map_range(generation, dim=map_dim)
-        metric_values = {type(metric).__name__ : metric(generation, target_input) for metric in self.metrics}
+        metric_values = {_metric_name(metric) : metric(generation, target_input) for metric in self.metrics}
         features = self.extract_features(generation), self.extract_features(target_input)
         if log_prefix is None or log_prefix == '':
             collection_dict = metric_values
@@ -162,10 +139,10 @@ class VisionRunner(ModelRunner):
             target_features = torch.concat(self.__validation_target_features, dim=0)
             self.__validation_generation_features.clear()
             self.__validation_target_features.clear()
-            log.update({f'Val-{type(metric).__name__}' : metric(generation_features.detach_(), target_features.detach_()).mean() for metric in self.feature_metrics})
+            log.update({f'Val-{_metric_name(metric)}' : metric(generation_features.detach_(), target_features.detach_()).mean() for metric in self.feature_metrics})
         if len(self.global_metrics) > 0:
             generation, target, _ = self.__concat_collection(self.__validation_collection)
-            log.update({f'Val-{type(metric).__name__}' : metric(generation, target).mean() for metric in self.global_metrics})
+            log.update({f'Val-{_metric_name(metric)}' : metric(generation, target).mean() for metric in self.global_metrics})
         if len(log) > 0:
             self.log_dict(log, prog_bar=True, logger=True, on_step=False, on_epoch=True, sync_dist=True)
     
@@ -197,10 +174,10 @@ class VisionRunner(ModelRunner):
             target_features = torch.concat(self.__test_target_features, dim=0)
             self.__test_generation_features.clear()
             self.__test_target_features.clear()
-            log.update({type(metric).__name__ : metric(generation_features.detach_(), target_features.detach_()).mean() for metric in self.feature_metrics})
+            log.update({_metric_name(metric) : metric(generation_features.detach_(), target_features.detach_()).mean() for metric in self.feature_metrics})
         if len(self.global_metrics) > 0:
             generation, target, _ = self.__concat_collection(self.__test_collection)
-            log.update({type(metric).__name__ : metric(generation, target).mean() for metric in self.global_metrics})
+            log.update({_metric_name(metric) : metric(generation, target).mean() for metric in self.global_metrics})
         if len(log) > 0:
             self.log_dict(log, prog_bar=True, logger=True, on_step=False, on_epoch=True, sync_dist=True)
     
@@ -290,3 +267,29 @@ class VisionRunner(ModelRunner):
         result = super().take_test_results()
         self.__generation = self.__target = self.__source = self.__test_collection = None
         return result
+
+
+def _tuplize(func, batch):
+    if func is None:
+        return tuple()
+    else:
+        data = func(batch)
+        if not isinstance(data, tuple):
+            data = (data,)
+        return data
+
+
+def _to_sequence(values):
+    if values is None:
+        return []
+    elif isinstance(values, Sequence):
+        return values
+    else:
+        return [values]
+
+
+def _metric_name(metric):
+    if hasattr(metric, '__name__'):
+        return metric.__name__
+    else:
+        return type(metric).__name__
